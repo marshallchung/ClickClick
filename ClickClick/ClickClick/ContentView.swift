@@ -23,6 +23,7 @@ struct ContentView: View {
     
     // 遊戲數據
     @State private var score: Int = 0
+    @AppStorage("HighScore") private var highScore: Int = 0
     @State private var timeRemaining: Int = 30
     @State private var countdown: Int = 3
     
@@ -31,7 +32,7 @@ struct ContentView: View {
     
     // 計時器 (每秒觸發一次)
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
+    
     var body: some View {
         ZStack {
             // 背景底色
@@ -46,7 +47,7 @@ struct ContentView: View {
                             .font(.system(size: 50, weight: .bold))
                         Text("時間：\(timeRemaining) 秒")
                             .font(.system(size: 40, weight: .medium))
-                            // 時間小於等於5秒時變紅色提醒
+                        // 時間小於等於5秒時變紅色提醒
                             .foregroundColor(timeRemaining <= 5 && gameState == .playing ? .red : .primary)
                     }
                     
@@ -104,6 +105,10 @@ struct ContentView: View {
                         .font(.system(size: 50, weight: .black))
                         .foregroundColor(.white)
                     
+                    Text("👑 歷史最高分：\(highScore)")
+                        .font(.system(size: 40, weight: .black))
+                        .foregroundColor(.yellow)
+                    
                     Button(action: {
                         startGame()
                     }) {
@@ -135,6 +140,12 @@ struct ContentView: View {
                         }) {
                             menuButtonText("重新開始", color: .red)
                         }
+                        
+                        Button(action: {
+                            gameState = .ready
+                        }) {
+                            menuButtonText("返回主畫面", color: .blue)
+                        }
                     }
                 }
                 
@@ -153,36 +164,35 @@ struct ContentView: View {
                     }) {
                         menuButtonText("重新開始", color: .blue)
                     }
+                    
+                    Button(action: {
+                        gameState = .ready
+                    }) {
+                        menuButtonText("返回主畫面", color: .blue)
+                    }
                 }
                 
             case .playing:
                 EmptyView()
             }
         }
+        
         // 計時器邏輯
         .onReceive(timer) { _ in
-            switch gameState {
-            case .starting:
-                if countdown > 1 {
-                    countdown -= 1
-                    // 短震動，增加倒數感
-                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                } else {
-                    // 倒數結束，開始遊戲
-                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                    gameState = .playing
-                    timeRemaining = 30
-                }
-            case .playing:
+            // 現在這裡只負責遊玩中的 30 秒倒數
+            if gameState == .playing {
                 if timeRemaining > 0 {
                     timeRemaining -= 1
                 } else {
                     // 30 秒結束，時間到顯示結算畫面
                     UINotificationFeedbackGenerator().notificationOccurred(.warning)
                     gameState = .gameOver
+                    
+                    // 破紀錄判斷
+                    if score > highScore {
+                        highScore = score
+                    }
                 }
-            default:
-                break
             }
         }
     }
@@ -195,7 +205,7 @@ struct ContentView: View {
             .fill(areaIndex == targetArea ? Color.red : Color.gray.opacity(0.3))
             .aspectRatio(1.0, contentMode: .fit)
             .cornerRadius(15)
-            // 點下(Touch Down)就觸發
+        // 點下(Touch Down)就觸發
             .onLongPressGesture(minimumDuration: 0.0) {
                 // 【重要】加上判斷：只有在「遊玩中」才能點擊得分
                 guard gameState == .playing else { return }
@@ -236,10 +246,42 @@ struct ContentView: View {
     // 初始化並開始遊戲
     func startGame() {
         score = 0
-        timeRemaining = 30
         countdown = 3
         targetArea = Int.random(in: 0...3)
         gameState = .starting
+        
+        // 出現「3」的瞬間，精準觸發第一下震動
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        
+        // 建立一個專屬的「精準倒數任務」
+        Task {
+            // 迴圈控制倒數 2 和 1
+            for _ in 0..<2 {
+                // 精準等待 1 秒 (1_000_000_000 奈秒 = 1 秒)
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                
+                // 防呆機制：確保玩家沒有中途跳走
+                guard gameState == .starting else { return }
+                
+                countdown -= 1
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+            }
+            
+            // 最後再等 1 秒，準備開跑
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard gameState == .starting else { return }
+            
+            // 雙重震動 (轟轟！)
+            let generator = UIImpactFeedbackGenerator(style: .heavy)
+            generator.impactOccurred()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                generator.impactOccurred()
+            }
+            
+            // 切換狀態，遊戲正式開始
+            gameState = .playing
+            timeRemaining = 30
+        }
     }
 }
 
