@@ -21,14 +21,23 @@ struct ContentView: View {
     // 遊戲狀態控制
     @State private var gameState: GameState = .ready
     
+    // 難度選擇 (格子大小)
+    @State private var gridSize: Int = 2
+    
     // 遊戲數據
     @State private var score: Int = 0
-    @AppStorage("HighScore") private var highScore: Int = 0
+    @AppStorage("HighScore_2x2") private var highScore2x2: Int = 0
+    @AppStorage("HighScore_3x3") private var highScore3x3: Int = 0
     @State private var timeRemaining: Int = 30
     @State private var countdown: Int = 3
     
-    // 記錄目前「紅色區域」的編號 (0, 1, 2, 3)
-    @State private var targetArea: Int = Int.random(in: 0...3)
+    // 記錄目前「紅色區域」的編號
+    @State private var targetArea: Int = Int.random(in: 0..<4)
+    
+    // 依據難度取得對應的最高分
+    private var highScore: Int {
+        get { gridSize == 2 ? highScore2x2 : highScore3x3 }
+    }
     
     // 計時器 (每秒觸發一次)
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -44,9 +53,9 @@ struct ContentView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("分數：\(score)")
-                            .font(.system(size: 50, weight: .bold))
+                            .font(.system(size: 60, weight: .bold))
                         Text("時間：\(timeRemaining) 秒")
-                            .font(.system(size: 40, weight: .medium))
+                            .font(.system(size: 50, weight: .medium))
                         // 時間小於等於5秒時變紅色提醒
                             .foregroundColor(timeRemaining <= 5 && gameState == .playing ? .red : .primary)
                     }
@@ -72,15 +81,14 @@ struct ContentView: View {
                 
                 Spacer()
                 
-                // 遊戲區塊：2x2 十字四等分
+                // 遊戲區塊：動態格子 (2x2 或 3x3)
                 VStack(spacing: 15) {
-                    HStack(spacing: 15) {
-                        createButton(areaIndex: 0)
-                        createButton(areaIndex: 1)
-                    }
-                    HStack(spacing: 15) {
-                        createButton(areaIndex: 2)
-                        createButton(areaIndex: 3)
+                    ForEach(0..<gridSize, id: \.self) { row in
+                        HStack(spacing: 15) {
+                            ForEach(0..<gridSize, id: \.self) { col in
+                                createButton(areaIndex: row * gridSize + col)
+                            }
+                        }
                     }
                 }
                 .padding()
@@ -109,10 +117,20 @@ struct ContentView: View {
                         .font(.system(size: 40, weight: .black))
                         .foregroundColor(.yellow)
                     
-                    Button(action: {
-                        startGame()
-                    }) {
-                        menuButtonText("開始遊戲", color: .blue)
+                    // 難度選擇
+                    VStack(spacing: 10) {
+                        Text("選擇難度")
+                            .font(.title2.bold())
+                            .foregroundColor(.white)
+                        Button(action: { gridSize = 2}) {
+                            menuButtonText("入門", color: gridSize == 2 ? .blue : .gray)
+                        }
+                        Button(action: { gridSize = 3}) {
+                            menuButtonText("進階", color: gridSize == 3 ? .blue : .gray)
+                        }
+                    }
+                    Button(action: {startGame()}){
+                        menuButtonText("開始遊戲", color: .green)
                     }
                 }
                 
@@ -156,20 +174,21 @@ struct ContentView: View {
                         .foregroundColor(.red)
                     
                     Text("最終得分：\(score)")
-                        .font(.system(size: 60, weight: .black))
+                        .font(.system(size: 50, weight: .black))
                         .foregroundColor(.yellow)
                     
                     Button(action: {
                         startGame()
                     }) {
-                        menuButtonText("重新開始", color: .blue)
+                        menuButtonText("重新開始", color: .green)
                     }
-                    
+                    .padding(.bottom, 30)
                     Button(action: {
                         gameState = .ready
                     }) {
                         menuButtonText("返回主畫面", color: .blue)
                     }
+                    .padding(.bottom, 50)
                 }
                 
             case .playing:
@@ -190,7 +209,11 @@ struct ContentView: View {
                     
                     // 破紀錄判斷
                     if score > highScore {
-                        highScore = score
+                        if gridSize == 2 {
+                            highScore2x2 = score
+                        } else {
+                            highScore3x3 = score
+                        }
                     }
                 }
             }
@@ -219,9 +242,10 @@ struct ContentView: View {
                     score += 1
                     
                     // 3. 更換紅色區域，保證下一次不重複
-                    var newTarget = Int.random(in: 0...3)
+                    let totalCells = gridSize * gridSize
+                    var newTarget = Int.random(in: 0..<totalCells)
                     while newTarget == targetArea {
-                        newTarget = Int.random(in: 0...3)
+                        newTarget = Int.random(in: 0..<totalCells)
                     }
                     targetArea = newTarget
                     
@@ -235,7 +259,7 @@ struct ContentView: View {
     // 選單按鈕的共用外觀
     func menuButtonText(_ title: String, color: Color) -> some View {
         Text(title)
-            .font(.title2.bold())
+            .font(.system(size: 30, weight: .bold))
             .foregroundColor(.white)
             .frame(width: 200, height: 60)
             .background(color)
@@ -247,7 +271,7 @@ struct ContentView: View {
     func startGame() {
         score = 0
         countdown = 3
-        targetArea = Int.random(in: 0...3)
+        targetArea = Int.random(in: 0..<(gridSize * gridSize))
         gameState = .starting
         
         // 出現「3」的瞬間，精準觸發第一下震動
